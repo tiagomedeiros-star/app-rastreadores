@@ -23,7 +23,6 @@ HTML_TEMPLATE = """
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <!-- Ajusta o zoom perfeitamente para a tela do celular -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel CalAmp</title>
     <style>
@@ -33,9 +32,12 @@ HTML_TEMPLATE = """
         input[type="text"] { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
         button { width: 100%; padding: 12px; background-color: #3498db; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; }
         button:active { background-color: #2980b9; }
-        .macros { display: flex; gap: 10px; margin-top: 10px; }
-        .macros button { background-color: #2ecc71; }
+        
+        /* O flex-wrap permite que os botões quebrem para a linha de baixo se não couberem */
+        .macros { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        .macros button { flex: 1 1 30%; background-color: #2ecc71; padding: 10px; }
         .macros button:active { background-color: #27ae60; }
+        
         #terminal { width: 100%; height: 300px; margin-top: 20px; background: #222; color: #0f0; padding: 10px; border-radius: 4px; font-family: monospace; overflow-y: auto; white-space: pre-wrap; box-sizing: border-box; }
     </style>
 </head>
@@ -52,6 +54,11 @@ HTML_TEMPLATE = """
             <button onclick="enviarMacro('AT')">Teste (AT)</button>
             <button onclick="enviarMacro('AT+CSQ')">Sinal GSM</button>
             <button onclick="enviarMacro('AT+CCID')">Ler Chip</button>
+            
+            <!-- Novos botões CalAmp adicionados aqui -->
+            <button onclick="enviarMacro('ATIC')">ATIC</button>
+            <button onclick="enviarMacro('ATI0')">VERSÃO</button>
+            <button onclick="enviarMacro('AT$PEG ACTION 62 197')">TECLA-11</button>
         </div>
 
         <div id="terminal">Aguardando comandos...</div>
@@ -63,7 +70,7 @@ HTML_TEMPLATE = """
 
         function adicionarLog(texto) {
             terminal.innerHTML += '\\n' + texto;
-            terminal.scrollTop = terminal.scrollHeight; // Rola para o final automaticamente
+            terminal.scrollTop = terminal.scrollHeight;
         }
 
         async function enviarComando(event) {
@@ -72,7 +79,7 @@ HTML_TEMPLATE = """
             if(!cmd) return;
 
             adicionarLog("> " + cmd);
-            inputComando.value = ''; // Limpa o campo
+            inputComando.value = '';
             
             try {
                 let formData = new FormData();
@@ -109,7 +116,7 @@ def enviar():
     try:
         ser.reset_input_buffer()
         ser.write((cmd + ENTER).encode())
-        time.sleep(1) # Tempo para o CalAmp processar
+        time.sleep(1)
         resposta_bytes = ser.read_all()
         resposta_texto = resposta_bytes.decode(errors="replace").strip()
         
@@ -121,5 +128,4 @@ def enviar():
         return jsonify({'resposta': f'[ERRO SERIAL] {e}'})
 
 if __name__ == '__main__':
-    # host='0.0.0.0' permite que qualquer aparelho na rede WiFi acesse a página
     app.run(host='0.0.0.0', port=5000)
