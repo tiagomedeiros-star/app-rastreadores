@@ -58,7 +58,7 @@ HTML_TEMPLATE = """
             <!-- Novos botões CalAmp adicionados aqui -->
             <button onclick="enviarMacro('ATIC')">ATIC</button>
             <button onclick="enviarMacro('ATI0')">VERSÃO</button>
-            <button onclick="enviarMacro('AT$PEG ACTION 62 197')">TECLA-11</button>
+            <button onclick="enviarMacro('AT$APP PEG ACTION 62 197')">TECLA-11</button>
         </div>
 
         <div id="terminal">Aguardando comandos...</div>
