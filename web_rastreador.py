@@ -24,7 +24,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel CalAmp | Interface Digital</title>
+    <title>DOCKLITE - DIGITAL</title>
     <style>
         /* Reset e fundo Dark/Gamer */
         body { 
@@ -158,7 +158,7 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h2>⚡ Terminal CalAmp</h2>
+        <h2>⚡ DOCKLITE - DIGITAL</h2>
         
         <form id="cmdForm" onsubmit="enviarComando(event)">
             <input type="text" id="comando" placeholder="Digite o comando AT..." required autocomplete="off">
@@ -166,10 +166,6 @@ HTML_TEMPLATE = """
         </form>
 
         <div class="macros">
-            <button onclick="enviarMacro('AT')">Teste (AT)</button>
-            <button onclick="enviarMacro('AT+CSQ')">Sinal GSM</button>
-            <button onclick="enviarMacro('AT+CCID')">Ler Chip</button>
-            
             <button onclick="enviarMacro('ATIC')">ATIC</button>
             <button onclick="enviarMacro('ATI0')">VERSÃO</button>
             <button onclick="enviarMacro('AT$APP PEG ACTION 62 197')">TECLA-11</button>
