@@ -6,13 +6,13 @@
 // ==========================================
 // CONFIGURAÇÕES (EDITE AQUI)
 // ==========================================
-const char* WIFI_SSID  = "NOME_DO_SEU_WIFI";
-const char* WIFI_SENHA = "SENHA_DO_SEU_WIFI";
+const char* WIFI_SSID  = "Queonetics-Convidados";
+const char* WIFI_SENHA = "acelera@queonetics";
 
 // Serial1 = porta UART que conversa com o rastreador
 // ESP TX (GPIO3) -> RX do rastreador | ESP RX (GPIO4) <- TX do rastreador | GND com GND
-const int RX_PIN = 4;
-const int TX_PIN = 3;
+const int RX_PIN = 20;
+const int TX_PIN = 21;
 const unsigned long BAUD = 115200;   // velocidade dos CalAmps modernos
 const char ENTER = '\r';             // fim de linha que o rastreador exige
 
