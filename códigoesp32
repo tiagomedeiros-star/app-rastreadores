@@ -1,4 +1,3 @@
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -10,16 +9,16 @@ const char* WIFI_SSID  = "Queonetics-Convidados";
 const char* WIFI_SENHA = "acelera@queonetics";
 
 // Serial1 = porta UART que conversa com o rastreador
-// ESP TX (GPIO3) -> RX do rastreador | ESP RX (GPIO4) <- TX do rastreador | GND com GND
+// ESP TX (GPIO21) -> RX do rastreador | ESP RX (GPIO20) <- TX do rastreador | GND com GND
 const int RX_PIN = 20;
 const int TX_PIN = 21;
 const unsigned long BAUD = 115200;   // velocidade dos CalAmps modernos
 const char ENTER = '\r';             // fim de linha que o rastreador exige
 
-WebServer server(80);  // servidor web na porta 80 (o Flask usava a 5000)
+WebServer server(80);  // servidor web na porta 80
 
 // ==========================================
-// INTERFACE (mesmo visual do site da Raspberry)
+// INTERFACE WEB (HTML/CSS/JS)
 // ==========================================
 const char HTML_PAGE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -165,7 +164,6 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
             inputComando.focus();
 
             try {
-                // Mudança: URLSearchParams em vez de FormData (a ESP32 lê esse formato mais fácil)
                 let resposta = await fetch('/enviar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -175,7 +173,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 
                 adicionarLog("<span style='color:#a1a1aa'>[RX]:</span>\n" + dados.resposta);
             } catch (erro) {
-                adicionarLog("<span style='color:#ef4444'>[ERRO SISTEMA] Falha na comunicação com a ESP32: " + erro + "</span>");
+                adicionarLog("<span style='color:#ef4444'>[ERRO SISTEMA] Falha na comunicação com a ESP: " + erro + "</span>");
             }
         }
 
@@ -192,7 +190,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 // FUNÇÕES AUXILIARES
 // ==========================================
 
-// Prepara o texto para ir dentro do JSON (escapa aspas, barras e quebras de linha)
+// Prepara o texto para o JSON mantendo acentuação UTF-8 intacta
 String jsonEscape(const String& texto) {
   String saida;
   saida.reserve(texto.length() + 16);
@@ -201,10 +199,10 @@ String jsonEscape(const String& texto) {
     if (c == '"')       saida += "\\\"";
     else if (c == '\\') saida += "\\\\";
     else if (c == '\n') saida += "\\n";
-    else if (c == '\r') { /* ignora */ }
+    else if (c == '\r') { /* ignora retorno de carro isolado */ }
     else if (c == '\t') saida += "\\t";
-    else if ((uint8_t)c < 32 || (uint8_t)c > 126) saida += '?';  // ruído elétrico
-    else saida += c;
+    else if ((uint8_t)c < 32) saida += ' '; // limpa apenas caracteres de controle invisíveis ruins
+    else saida += c;                        // preserva letras normais e com acento (UTF-8)
   }
   return saida;
 }
@@ -213,12 +211,12 @@ String jsonEscape(const String& texto) {
 // ROTAS DO SERVIDOR
 // ==========================================
 
-// ROTA 1: página principal (como o '/' do Flask)
+// ROTA 1: página principal
 void rotaIndex() {
   server.send_P(200, "text/html; charset=utf-8", HTML_PAGE);
 }
 
-// ROTA 2: recebe o comando, manda pro rastreador e devolve a resposta
+// ROTA 2: envia o comando e lê a resposta dinamicamente (super rápido)
 void rotaEnviar() {
   String cmd = server.arg("comando");
   cmd.trim();
@@ -228,21 +226,35 @@ void rotaEnviar() {
     return;
   }
 
-  // Limpa sujeira antiga da porta
+  // 1. Limpa sujeira antiga da porta RX
   while (Serial1.available()) Serial1.read();
 
-  // Envia o comando + ENTER para o CalAmp
+  // 2. Envia o comando + ENTER para o CalAmp
   Serial1.print(cmd);
   Serial1.write(ENTER);
+  Serial1.flush(); // Garante que tudo foi enviado fisicamente antes de começar a ouvir
 
-  // Espera 1 segundo pro rastreador processar
-  delay(1000);
+  // 3. Leitura inteligente: responde assim que os dados terminarem
+  String resposta = "";
+  unsigned long inicio = millis();
+  unsigned long ultimoByteRecebido = millis();
+  const unsigned long TIMEOUT_TOTAL = 2000;      // 2 segundos (máximo absoluto de espera)
+  const unsigned long TIMEOUT_SILENCIO = 60;     // 60 milissegundos sem dados para considerar "fim da resposta"
 
-  // Lê tudo que o rastreador devolveu
-  String resposta;
-  while (Serial1.available()) {
-    resposta += (char)Serial1.read();
+  while (millis() - inicio < TIMEOUT_TOTAL) {
+    while (Serial1.available()) {
+      char c = (char)Serial1.read();
+      resposta += c;
+      ultimoByteRecebido = millis();
+    }
+
+    // Se já recebeu algum dado e ficou 60ms em silêncio, a resposta do rastreador acabou!
+    if (resposta.length() > 0 && (millis() - ultimoByteRecebido > TIMEOUT_SILENCIO)) {
+      break; 
+    }
+    delay(2); // Respira para não travar o WiFi da ESP
   }
+
   resposta.trim();
 
   if (resposta.length() == 0) {
@@ -264,9 +276,6 @@ void setup() {
 
   // Conecta no WiFi
   WiFi.mode(WIFI_STA);
-  // Se sua Super Mini não conectar de jeito nenhum, descomente a linha abaixo
-  // (algumas placas têm antena fraca e funcionam melhor com potência menor):
-  // WiFi.setTxPower(WIFI_POWER_8_5dBm);
   WiFi.begin(WIFI_SSID, WIFI_SENHA);
 
   Serial.print("Conectando ao WiFi");
