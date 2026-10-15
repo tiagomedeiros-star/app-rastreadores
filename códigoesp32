@@ -1,1 +1,297 @@
 
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+
+// ==========================================
+// CONFIGURAÇÕES (EDITE AQUI)
+// ==========================================
+const char* WIFI_SSID  = "NOME_DO_SEU_WIFI";
+const char* WIFI_SENHA = "SENHA_DO_SEU_WIFI";
+
+// Serial1 = porta UART que conversa com o rastreador
+// ESP TX (GPIO3) -> RX do rastreador | ESP RX (GPIO4) <- TX do rastreador | GND com GND
+const int RX_PIN = 4;
+const int TX_PIN = 3;
+const unsigned long BAUD = 115200;   // velocidade dos CalAmps modernos
+const char ENTER = '\r';             // fim de linha que o rastreador exige
+
+WebServer server(80);  // servidor web na porta 80 (o Flask usava a 5000)
+
+// ==========================================
+// INTERFACE (mesmo visual do site da Raspberry)
+// ==========================================
+const char HTML_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOCKLITE - DIGITAL</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #09090b;
+            color: #e4e4e7;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 650px;
+            background: #18181b;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #27272a;
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.08);
+        }
+        h2 {
+            text-align: center;
+            color: #10b981;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+            margin-top: 5px;
+            margin-bottom: 25px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            background: #000000;
+            border: 1px solid #3f3f46;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+            color: #10b981;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        input[type="text"]:focus {
+            border-color: #10b981;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+        }
+        button[type="submit"] {
+            width: 100%;
+            padding: 15px;
+            margin-top: 15px;
+            background: linear-gradient(90deg, #047857, #059669);
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .macros {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 25px;
+        }
+        .macros button {
+            flex: 1 1 30%;
+            background: transparent;
+            padding: 12px 10px;
+            border: 1px solid #0284c7;
+            color: #38bdf8;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .macros button:hover {
+            background: #0284c7;
+            color: #ffffff;
+            box-shadow: 0 0 15px rgba(2, 132, 199, 0.5);
+        }
+        #terminal {
+            width: 100%;
+            height: 350px;
+            margin-top: 30px;
+            background: #050505;
+            color: #4ade80;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #27272a;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>⚡ DOCKLITE - DIGITAL</h2>
+
+        <form id="cmdForm" onsubmit="enviarComando(event)">
+            <input type="text" id="comando" placeholder="Digite o comando AT..." required autocomplete="off">
+            <button type="submit">Executar Comando</button>
+        </form>
+
+        <div class="macros">
+            <button onclick="enviarMacro('ATIC')">ATIC</button>
+            <button onclick="enviarMacro('ATI0')">VERSÃO</button>
+            <button onclick="enviarMacro('AT$APP PEG ACTION 62 197')">TECLA-11</button>
+        </div>
+
+        <div id="terminal">System Initialized. Awaiting commands...</div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        const inputComando = document.getElementById('comando');
+
+        window.onload = () => inputComando.focus();
+
+        function adicionarLog(texto) {
+            terminal.innerHTML += '\n' + texto;
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        async function enviarComando(event) {
+            if (event) event.preventDefault();
+
+            let cmd = inputComando.value.trim();
+            if (!cmd) return;
+
+            adicionarLog("\n<span style='color:#38bdf8'>[TX] > " + cmd + "</span>");
+            inputComando.value = '';
+            inputComando.focus();
+
+            try {
+                // Mudança: URLSearchParams em vez de FormData (a ESP32 lê esse formato mais fácil)
+                let resposta = await fetch('/enviar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ comando: cmd })
+                });
+                let dados = await resposta.json();
+
+                adicionarLog("<span style='color:#a1a1aa'>[RX]:</span>\n" + dados.resposta);
+            } catch (erro) {
+                adicionarLog("<span style='color:#ef4444'>[ERRO SISTEMA] Falha na comunicação com a ESP32: " + erro + "</span>");
+            }
+        }
+
+        function enviarMacro(cmd) {
+            inputComando.value = cmd;
+            enviarComando();
+        }
+    </script>
+</body>
+</html>
+)rawliteral";
+
+// ==========================================
+// FUNÇÕES AUXILIARES
+// ==========================================
+
+// Prepara o texto para ir dentro do JSON (escapa aspas, barras e quebras de linha)
+String jsonEscape(const String& texto) {
+  String saida;
+  saida.reserve(texto.length() + 16);
+  for (size_t i = 0; i < texto.length(); i++) {
+    char c = texto[i];
+    if (c == '"')       saida += "\\\"";
+    else if (c == '\\') saida += "\\\\";
+    else if (c == '\n') saida += "\\n";
+    else if (c == '\r') { /* ignora */ }
+    else if (c == '\t') saida += "\\t";
+    else if ((uint8_t)c < 32 || (uint8_t)c > 126) saida += '?';  // ruído elétrico
+    else saida += c;
+  }
+  return saida;
+}
+
+// ==========================================
+// ROTAS DO SERVIDOR
+// ==========================================
+
+// ROTA 1: página principal (como o '/' do Flask)
+void rotaIndex() {
+  server.send_P(200, "text/html; charset=utf-8", HTML_PAGE);
+}
+
+// ROTA 2: recebe o comando, manda pro rastreador e devolve a resposta
+void rotaEnviar() {
+  String cmd = server.arg("comando");
+  cmd.trim();
+
+  if (cmd.length() == 0) {
+    server.send(200, "application/json", "{\"resposta\":\"[ERRO] Comando vazio.\"}");
+    return;
+  }
+
+  // Limpa sujeira antiga da porta
+  while (Serial1.available()) Serial1.read();
+
+  // Envia o comando + ENTER para o CalAmp
+  Serial1.print(cmd);
+  Serial1.write(ENTER);
+
+  // Espera 1 segundo pro rastreador processar
+  delay(1000);
+
+  // Lê tudo que o rastreador devolveu
+  String resposta;
+  while (Serial1.available()) {
+    resposta += (char)Serial1.read();
+  }
+  resposta.trim();
+
+  if (resposta.length() == 0) {
+    resposta = "[Timeout] Nenhuma resposta do módulo.";
+  }
+
+  server.send(200, "application/json", "{\"resposta\":\"" + jsonEscape(resposta) + "\"}");
+}
+
+// ==========================================
+// SETUP E LOOP
+// ==========================================
+void setup() {
+  Serial.begin(115200);   // USB (monitor serial do VS Code)
+  delay(2000);            // dá tempo da USB abrir pra você ver as mensagens
+
+  // Porta que conversa com o rastreador
+  Serial1.begin(BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
+
+  // Conecta no WiFi
+  WiFi.mode(WIFI_STA);
+  // Se sua Super Mini não conectar de jeito nenhum, descomente a linha abaixo
+  // (algumas placas têm antena fraca e funcionam melhor com potência menor):
+  // WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  WiFi.begin(WIFI_SSID, WIFI_SENHA);
+
+  Serial.print("Conectando ao WiFi");
+  int tentativas = 0;
+  while (WiFi.status() != WL_CONNECTED && tentativas < 40) {  // ~20 s
+    delay(500);
+    Serial.print(".");
+    tentativas++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi conectado!");
+    Serial.print("Acesse no celular: http://");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\nFalha ao conectar. Confira nome e senha do WiFi.");
+  }
+
+  // Registra as rotas e liga o servidor
+  server.on("/", HTTP_GET, rotaIndex);
+  server.on("/enviar", HTTP_POST, rotaEnviar);
+  server.begin();
+  Serial.println("Servidor web iniciado.");
+}
+
+void loop() {
+  server.handleClient();  // atende quem acessar o site
+}
